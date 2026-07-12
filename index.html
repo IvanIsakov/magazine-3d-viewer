@@ -19,11 +19,24 @@
   #stage canvas{display:block;}
 
   /* ---------- control panel ---------- */
+  #panelToggle{
+    position:fixed; top:16px; right:16px; z-index:25; display:none;
+    width:42px; height:32px; border:1px solid var(--panel-border); border-radius:10px;
+    background:var(--panel-bg); backdrop-filter:blur(14px); color:var(--txt);
+    font-size:15px; line-height:1; cursor:pointer;
+  }
+  #panelToggle:hover{background:#2d3340;}
   #panel{
-    position:fixed; top:16px; right:16px; width:250px; max-height:calc(100vh - 32px);
+    position:fixed; top:56px; right:16px; width:250px; max-height:calc(100vh - 72px);
     overflow-y:auto; background:var(--panel-bg); backdrop-filter:blur(14px);
     border:1px solid var(--panel-border); border-radius:14px; padding:14px 14px 10px;
     display:none; z-index:20; user-select:none;
+    transition:opacity .18s, transform .18s;
+  }
+  #panel.folded{opacity:0; transform:translateY(-10px); pointer-events:none;}
+  @media (max-width:600px){
+    #panel{width:min(250px, calc(100vw - 24px)); max-height:calc(100vh - 130px);}
+    #hint{display:none !important;}
   }
   #panel::-webkit-scrollbar{width:6px} #panel::-webkit-scrollbar-thumb{background:#444;border-radius:3px}
   .sec{margin-bottom:14px;}
@@ -150,6 +163,7 @@
 </div>
 
 <!-- Control panel -->
+<button id="panelToggle" title="Show/hide controls">⌃</button>
 <div id="panel">
   <div class="sec">
     <h3>Background</h3>
@@ -769,9 +783,14 @@ function updateSpine() {
 }
 
 function fitCamera() {
-  const d = Math.max(state.W * 2, state.H) * 2.1 + 14;
-  camera.position.set(d * 0.28, d * 0.85, d * 0.75);
+  // aspect-aware framing: fit the open book in BOTH screen dimensions,
+  // so portrait phones back the camera off instead of cropping the magazine
+  const R = Math.hypot(state.W, state.H / 2) + 4;
+  const vHalf = THREE.MathUtils.degToRad(camera.fov / 2);
+  const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
+  const d = R / Math.tan(Math.min(vHalf, hHalf)) * 1.08;
   controls.target.set(0, state.N * state.TH * 0.5 + 1, 0);
+  camera.position.set(0.24, 0.73, 0.64).multiplyScalar(d).add(controls.target);
   controls.update();
 }
 
@@ -839,6 +858,11 @@ $('fmtConfirm').addEventListener('click', async () => {
   state.W = w / 10; state.H = h / 10;   // mm → cm
   $('fmtDialog').style.display = 'none';
   $('panel').style.display = 'block';
+  $('panelToggle').style.display = 'block';
+  if (innerWidth < 640) {            // phones: start with the panel folded away
+    $('panel').classList.add('folded');
+    $('panelToggle').textContent = '⌄';
+  }
   $('nav').style.display = 'flex';
   $('hint').style.display = 'block';
   setTimeout(() => { $('hint').style.opacity = '0'; $('hint').style.transition = 'opacity 1.5s'; }, 9000);
@@ -1023,6 +1047,11 @@ $('snapBtn').addEventListener('click', () => {
 });
 
 $('newPdfBtn').addEventListener('click', () => { $('drop').style.display = 'flex'; });
+
+$('panelToggle').addEventListener('click', () => {
+  const folded = $('panel').classList.toggle('folded');
+  $('panelToggle').textContent = folded ? '⌄' : '⌃';
+});
 
 /* drop zone + file input */
 const dropEl = $('drop'), boxEl = $('dropBox'), fileInput = $('fileInput');
