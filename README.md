@@ -2,7 +2,7 @@
 
 A single-file web app that turns any PDF magazine into an interactive, realistically animated 3D book. Drop in a PDF — the first page becomes the front cover, the last page the back cover — and flip through it in 3D.
 
-**Try it:** open `magazine3d.html` in a modern browser (Chrome, Edge, Firefox, Safari). No install, no build step, no server. Your PDF is processed entirely locally in the browser and never leaves your computer.
+**Try it:** open `index.html` in a modern browser (Chrome, Edge, Firefox, Safari). No install, no build step, no server. Your PDF is processed entirely locally in the browser and never leaves your computer.
 
 A sample zine (`Cowzine ver1.pdf`) is included for a quick test.
 
