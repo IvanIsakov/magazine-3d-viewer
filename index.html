@@ -810,7 +810,7 @@ function detectFormat(wmm, hmm) {
   return { name: 'Custom', wmm, hmm };
 }
 
-async function loadPDF(buf) {
+async function loadPDF(buf, autoCreate = false) {
   try {
     const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
     state.pdf = pdf;
@@ -819,6 +819,10 @@ async function loadPDF(buf) {
     const vp = page1.getViewport({ scale: 1 });
     const wmm = Math.round(vp.width * 25.4 / 72), hmm = Math.round(vp.height * 25.4 / 72);
     const det = detectFormat(wmm, hmm);
+    if (autoCreate) {
+      createMagazine(wmm, hmm);
+      return;
+    }
     // populate dialog
     $('fmtDetected').textContent =
       `Detected: ${det.name} — ${wmm} × ${hmm} mm · ${pdf.numPages} pages`;
@@ -852,8 +856,7 @@ function updateFmtPreview() {
 $('fmtW').addEventListener('input', updateFmtPreview);
 $('fmtH').addEventListener('input', updateFmtPreview);
 
-$('fmtConfirm').addEventListener('click', async () => {
-  const w = +$('fmtW').value, h = +$('fmtH').value;
+function createMagazine(w, h) {
   if (!(w > 0 && h > 0)) return;
   state.W = w / 10; state.H = h / 10;   // mm → cm
   $('fmtDialog').style.display = 'none';
@@ -868,6 +871,10 @@ $('fmtConfirm').addEventListener('click', async () => {
   setTimeout(() => { $('hint').style.opacity = '0'; $('hint').style.transition = 'opacity 1.5s'; }, 9000);
   buildBook();
   renderAllPages();
+}
+
+$('fmtConfirm').addEventListener('click', () => {
+  createMagazine(+$('fmtW').value, +$('fmtH').value);
 });
 
 async function renderAllPages() {
@@ -1071,6 +1078,17 @@ function readFile(file) {
   fr.readAsArrayBuffer(file);
 }
 
+async function loadDefaultPDF() {
+  try {
+    const response = await fetch('./Cowzine%20ver1.pdf');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    await loadPDF(new Uint8Array(await response.arrayBuffer()), true);
+  } catch (e) {
+    console.warn('Bundled Cowzine could not be loaded automatically:', e);
+    $('drop').style.display = 'flex';
+  }
+}
+
 /* ================= main loop ================= */
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
@@ -1112,6 +1130,7 @@ function tick(now) {
 }
 setBackground('white');
 requestAnimationFrame(tick);
+loadDefaultPDF();
 </script>
 </body>
 </html>
