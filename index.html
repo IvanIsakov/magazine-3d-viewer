@@ -248,7 +248,7 @@ const FLIP_MS = 950;
 const $ = id => document.getElementById(id);
 
 const state = {
-  pdf: null, pageCount: 0, genToken: 0,
+  pdf: null, pageCount: 0, genToken: 0, loadToken: 0,
   W: 21, H: 29.7, TH: 0.05,     // cm
   sheets: [], F: 0, N: 0,       // F = sheets flipped to the left
   anim: null, queue: [], drag: null,
@@ -267,7 +267,7 @@ renderer.toneMappingExposure = 1.0;
 $('stage').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.01, 4000);
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 1, 4000);
 camera.position.set(18, 42, 46);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -362,11 +362,17 @@ for (let i = 0; i < 2; i++) {
 
 renderer.xr.addEventListener('sessionstart', () => {
   controls.enabled = false;
+  camera.near = 0.01;
+  camera.far = 50;
+  camera.updateProjectionMatrix();
   bookGroup.scale.setScalar(0.01);       // centimetres to WebXR metres
   bookGroup.position.set(0, 1.15, -0.55);
 });
 
 renderer.xr.addEventListener('sessionend', () => {
+  camera.near = 1;
+  camera.far = 4000;
+  camera.updateProjectionMatrix();
   bookGroup.scale.setScalar(1);
   bookGroup.position.set(0, 0, 0);
   controls.enabled = true;
@@ -849,12 +855,24 @@ function detectFormat(wmm, hmm) {
   return { name: 'Custom', wmm, hmm };
 }
 
-async function loadPDF(buf, autoCreate = false) {
+async function loadPDF(buf, autoCreate = false, loadToken = ++state.loadToken) {
   try {
+    if (loadToken !== state.loadToken) return;
     const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    if (loadToken !== state.loadToken) {
+      await pdf.destroy();
+      return;
+    }
+    const page1 = await pdf.getPage(1);
+    if (loadToken !== state.loadToken) {
+      await pdf.destroy();
+      return;
+    }
+    const previousPDF = state.pdf;
     state.pdf = pdf;
     state.pageCount = pdf.numPages;
-    const page1 = await pdf.getPage(1);
+    if (previousPDF && previousPDF !== pdf)
+      previousPDF.destroy().catch(() => {});
     const vp = page1.getViewport({ scale: 1 });
     const wmm = Math.round(vp.width * 25.4 / 72), hmm = Math.round(vp.height * 25.4 / 72);
     const det = detectFormat(wmm, hmm);
@@ -897,6 +915,7 @@ $('fmtH').addEventListener('input', updateFmtPreview);
 
 function createMagazine(w, h) {
   if (!(w > 0 && h > 0)) return;
+  $('drop').style.display = 'none';
   state.W = w / 10; state.H = h / 10;   // mm → cm
   $('fmtDialog').style.display = 'none';
   $('panel').style.display = 'block';
@@ -1112,17 +1131,21 @@ addEventListener('drop', e => {
 });
 function readFile(file) {
   state.genToken++;                        // abort any in-flight page rendering
+  const loadToken = ++state.loadToken;     // supersede automatic or older PDF loads
   const fr = new FileReader();
-  fr.onload = () => loadPDF(new Uint8Array(fr.result));
+  fr.onload = () => loadPDF(new Uint8Array(fr.result), false, loadToken);
   fr.readAsArrayBuffer(file);
 }
 
 async function loadDefaultPDF() {
+  const loadToken = ++state.loadToken;
   try {
     const response = await fetch('./Cowzine%20ver1.pdf');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    await loadPDF(new Uint8Array(await response.arrayBuffer()), true);
+    if (loadToken !== state.loadToken) return;
+    await loadPDF(new Uint8Array(await response.arrayBuffer()), true, loadToken);
   } catch (e) {
+    if (loadToken !== state.loadToken) return;
     console.warn('Bundled Cowzine could not be loaded automatically:', e);
     $('drop').style.display = 'flex';
   }
