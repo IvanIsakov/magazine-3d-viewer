@@ -231,6 +231,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
@@ -258,6 +259,7 @@ const state = {
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
+renderer.xr.enabled = true;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.VSMShadowMap;   // allows properly blurred, diffuse shadows
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -265,7 +267,7 @@ renderer.toneMappingExposure = 1.0;
 $('stage').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 1, 4000);
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.01, 4000);
 camera.position.set(18, 42, 46);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -332,6 +334,43 @@ placeLight(dirLight2, 'l2Az', 'l2El');
 const bookGroup = new THREE.Group();
 bookGroup.rotation.x = -Math.PI / 2;
 scene.add(bookGroup);
+
+/* WebXR: show the entry button only on devices that support immersive VR.
+   Quest controller triggers flip backward with the left hand and forward
+   with the right hand. */
+if (navigator.xr) {
+  navigator.xr.isSessionSupported('immersive-vr').then(supported => {
+    if (!supported) return;
+    const vrButton = VRButton.createButton(renderer);
+    vrButton.style.bottom = '72px';
+    vrButton.setAttribute('aria-label', 'Enter virtual reality');
+    document.body.appendChild(vrButton);
+  }).catch(() => {});
+}
+
+for (let i = 0; i < 2; i++) {
+  const controller = renderer.xr.getController(i);
+  controller.userData.handedness = i === 0 ? 'left' : 'right';
+  controller.addEventListener('connected', e => {
+    controller.userData.handedness = e.data.handedness || controller.userData.handedness;
+  });
+  controller.addEventListener('select', () => {
+    startFlip(controller.userData.handedness === 'left' ? -1 : 1);
+  });
+  scene.add(controller);
+}
+
+renderer.xr.addEventListener('sessionstart', () => {
+  controls.enabled = false;
+  bookGroup.scale.setScalar(0.01);       // centimetres to WebXR metres
+  bookGroup.position.set(0, 1.15, -0.55);
+});
+
+renderer.xr.addEventListener('sessionend', () => {
+  bookGroup.scale.setScalar(1);
+  bookGroup.position.set(0, 0, 0);
+  controls.enabled = true;
+});
 
 /* ================= procedural textures ================= */
 function canvasTex(draw, w = 512, h = 512, repeat) {
@@ -1098,7 +1137,6 @@ addEventListener('resize', () => {
 });
 
 function tick(now) {
-  requestAnimationFrame(tick);
   controls.update();
   const a = state.anim;
   if (a) {
@@ -1121,7 +1159,7 @@ function tick(now) {
     updateSpine();
     state._fvPrev = state.Fview;
   }
-  if (dofEnabled) {
+  if (dofEnabled && !renderer.xr.isPresenting) {
     bokehPass.uniforms.focus.value = camera.position.distanceTo(controls.target);
     composer.render();
   } else {
@@ -1129,7 +1167,7 @@ function tick(now) {
   }
 }
 setBackground('white');
-requestAnimationFrame(tick);
+renderer.setAnimationLoop(tick);
 loadDefaultPDF();
 </script>
 </body>
